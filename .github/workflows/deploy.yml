@@ -1,0 +1,16 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deployment reminder
+        run: |
+          echo "Frontend → Vercel / Netlify / Cloudflare Pages"
+          echo "Backend  → Railway / Render / Fly.io"
+          echo "See DEPLOY.md for full instructions"
