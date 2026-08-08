@@ -3,8 +3,9 @@ import { io, Socket } from 'socket.io-client';
 import type { AppState, AppAction, Auction, Bid, Notification, User } from '@/types';
 import { mockAuctions, mockNotifications, currentUser } from '@/data/mock';
 
-const API_BASE = 'http://localhost:5000/api';
-const SOCKET_URL = 'http://localhost:5000';
+// Production-ready: use env vars when deployed
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000';
 
 const initialState: AppState = {
   user: currentUser,
@@ -28,17 +29,22 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
     case 'PLACE_BID': {
       const { auctionId, bid } = action.payload;
-      const auctions = state.auctions.map(a => a.id === auctionId ? { ...a, currentBid: bid.amount, bids: [bid, ...a.bids] } : a);
+      const auctions = state.auctions.map(a =>
+        a.id === auctionId ? { ...a, currentBid: bid.amount, bids: [bid, ...a.bids] } : a
+      );
       return { ...state, auctions };
     }
     case 'ADD_NOTIFICATION': return { ...state, notifications: [action.payload, ...state.notifications] };
     case 'READ_NOTIFICATION': {
-      const notifications = state.notifications.map(n => n.id === action.payload ? { ...n, read: true } : n);
+      const notifications = state.notifications.map(n =>
+        n.id === action.payload ? { ...n, read: true } : n
+      );
       return { ...state, notifications };
     }
     case 'SET_NOTIFICATIONS': return { ...state, notifications: action.payload };
     case 'SET_SCREEN': return { ...state, activeScreen: action.payload };
-    case 'SELECT_AUCTION': return { ...state, selectedAuctionId: action.payload, activeScreen: action.payload ? 'auctionDetail' : 'home' };
+    case 'SELECT_AUCTION':
+      return { ...state, selectedAuctionId: action.payload, activeScreen: action.payload ? 'auctionDetail' : 'home' };
     case 'TOGGLE_WATCH': {
       const watched = state.watchedAuctions.includes(action.payload)
         ? state.watchedAuctions.filter(id => id !== action.payload)
@@ -86,13 +92,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         if (a.ok) dispatch({ type: 'SET_AUCTIONS', payload: await a.json() });
         if (u.ok) dispatch({ type: 'SET_USER', payload: await u.json() });
         if (n.ok) dispatch({ type: 'SET_NOTIFICATIONS', payload: await n.json() });
-      } catch { console.warn('Backend offline — using mock'); }
+      } catch {
+        console.warn('Backend offline - using mock data');
+      }
     };
     load();
 
     const socket = io(SOCKET_URL, { transports: ['websocket', 'polling'] });
     socketRef.current = socket;
-    socket.on('connect', () => console.log('🟢 Live'));
+    socket.on('connect', () => console.log('Live connection ready'));
     socket.on('bid-update', ({ auction }) => dispatch({ type: 'UPDATE_AUCTION', payload: auction }));
     socket.on('auction-updated', (auction) => dispatch({ type: 'UPDATE_AUCTION', payload: auction }));
     socket.on('new-auction', (auction) => dispatch({ type: 'CREATE_AUCTION', payload: auction }));
@@ -108,7 +116,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [state.selectedAuctionId]);
 
   const refreshAuctions = useCallback(async () => {
-    try { const r = await fetch(`${API_BASE}/auctions`); if (r.ok) dispatch({ type: 'SET_AUCTIONS', payload: await r.json() }); } catch {}
+    try {
+      const r = await fetch(`${API_BASE}/auctions`);
+      if (r.ok) dispatch({ type: 'SET_AUCTIONS', payload: await r.json() });
+    } catch {}
   }, []);
 
   const navigateTo = useCallback((screen: string) => dispatch({ type: 'SET_SCREEN', payload: screen }), []);
@@ -118,14 +129,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!state.user) return false;
     try {
       const res = await fetch(`${API_BASE}/auctions/${auctionId}/bid`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount }),
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount }),
       });
       if (!res.ok) return false;
       const { auction, user } = await res.json();
       dispatch({ type: 'UPDATE_AUCTION', payload: auction });
       dispatch({ type: 'SET_USER', payload: user });
       return true;
-    } catch { return false; }
+    } catch {
+      return false;
+    }
   }, [state.user]);
 
   const toggleWatch = useCallback(async (id: string) => {
@@ -141,22 +156,37 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const topUp = useCallback(async (amount: number) => {
     dispatch({ type: 'TOP_UP', payload: amount });
     try {
-      const r = await fetch(`${API_BASE}/user/topup`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ amount }) });
+      const r = await fetch(`${API_BASE}/user/topup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount }),
+      });
       if (r.ok) dispatch({ type: 'SET_USER', payload: await r.json() });
     } catch {}
   }, []);
 
   const createAuction = useCallback(async (auction: Auction) => {
     try {
-      const r = await fetch(`${API_BASE}/auctions`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(auction) });
-      if (r.ok) { dispatch({ type: 'CREATE_AUCTION', payload: await r.json() }); return; }
+      const r = await fetch(`${API_BASE}/auctions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(auction),
+      });
+      if (r.ok) {
+        dispatch({ type: 'CREATE_AUCTION', payload: await r.json() });
+        return;
+      }
     } catch {}
     dispatch({ type: 'CREATE_AUCTION', payload: auction });
   }, []);
 
   const login = useCallback(async (username: string) => {
     try {
-      const r = await fetch(`${API_BASE}/auth/login`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username }) });
+      const r = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username }),
+      });
       if (r.ok) dispatch({ type: 'LOGIN', payload: await r.json() });
     } catch {}
   }, []);
@@ -164,7 +194,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const logout = useCallback(() => dispatch({ type: 'LOGOUT' }), []);
 
   return (
-    <AppContext.Provider value={{ state, dispatch, navigateTo, selectAuction, placeBid, toggleWatch, readNotification, topUp, createAuction, login, logout, refreshAuctions }}>
+    <AppContext.Provider value={{
+      state, dispatch, navigateTo, selectAuction, placeBid,
+      toggleWatch, readNotification, topUp, createAuction, login, logout, refreshAuctions,
+    }}>
       {children}
     </AppContext.Provider>
   );
